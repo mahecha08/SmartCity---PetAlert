@@ -2,13 +2,16 @@ from fastapi import FastAPI, HTTPException, Body, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
+import os
 import uuid
 import smtplib
 from email.message import EmailMessage
 from datetime import datetime
 
+from services.reports_repository import build_repository
+
 # --- Configuración Inicial ---
-app = FastAPI(title="SmartCity Pets API", version="1.0")
+app = FastAPI(title="PetAlert API", version="1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -18,11 +21,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Credenciales SMTP ---
-SMTP_USER = "albertreyes2812@gmail.com"
-SMTP_PASS = "yrpd payd iomo auzf"
+# --- Credenciales SMTP (desde variables de entorno, nunca en el código) ---
+SMTP_USER = os.environ.get("SMTP_USER", "")
+SMTP_PASS = os.environ.get("SMTP_PASS", "")
 
 def send_email(to_email: str, subject: str, html_content: str):
+    if not SMTP_USER or not SMTP_PASS:
+        print("SMTP_USER o SMTP_PASS no están configurados; no se envió el correo.")
+        return
+
     msg = EmailMessage()
     msg['Subject'] = subject
     msg['From'] = SMTP_USER
@@ -70,8 +77,8 @@ class PetReportComplete(BaseModel):
     status: str = "Perdida"
     updates: List[PetUpdate] = []
 
-# --- Base de Datos en Memoria ---
-reports_db: List[PetReportComplete] = []
+# --- Almacenamiento (memoria o Firestore, según REPORTS_STORE) ---
+repo = build_repository()
 
 @app.get("/")
 def health_check():
@@ -94,13 +101,13 @@ def create_report(report: PetReportInput, background_tasks: BackgroundTasks):
             status="Perdida",
             updates=[]
         )
-        reports_db.append(new_report)
+        repo.add(new_report)
         
         # Correo Confirmación Original
         html_content = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
             <h2 style="color: #4f46e5;">Registro de Mascota Perdida Confirmado</h2>
-            <p>Hola <b>{report.reporter_name}</b>, hemos guardado tu reporte.</p>
+            <p>Hola <b>{report.reporter_name}</b>, hemos guardado tu reporte en PetAlert.</p>
             <div style="background-color: #f3f4f6; padding: 15px; border-radius: 8px;">
                 <p><b>Descripción:</b> {report.description}</p>
                 <p><b>Ubicación:</b> <a href="{map_link}" style="color: #4f46e5;">Ver en Google Maps</a></p>
@@ -113,7 +120,7 @@ def create_report(report: PetReportInput, background_tasks: BackgroundTasks):
         return {"status": "success", "message": "Mascota registrada correctamente."}
 
     elif report.report_type == 'found' and report.linked_report_id:
-        lost_report = next((r for r in reports_db if r.id == report.linked_report_id), None)
+        lost_report = repo.get(report.linked_report_id)
         if not lost_report:
             raise HTTPException(status_code=404, detail="El reporte original no existe.")
             
@@ -129,6 +136,7 @@ def create_report(report: PetReportInput, background_tasks: BackgroundTasks):
         )
         lost_report.updates.append(new_update)
         lost_report.status = "En Evaluación"
+        repo.save(lost_report)
         
         # Correo Actualización al dueño
         html_content = f"""
@@ -156,4 +164,4 @@ def create_report(report: PetReportInput, background_tasks: BackgroundTasks):
 
 @app.get("/api/reports", response_model=List[PetReportComplete])
 def get_reports():
-    return list(reversed(reports_db))
+    return repo.list_newest_first()
