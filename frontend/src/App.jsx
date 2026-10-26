@@ -18,11 +18,45 @@ function LocationMarker({ position, setPosition }) {
   return position === null ? null : <Marker position={position}></Marker>;
 }
 
-const fileToBase64 = (file) => new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.readAsDataURL(file);
-  reader.onload = () => resolve(reader.result);
-  reader.onerror = error => reject(error);
+const compressImage = (file) => new Promise((resolve, reject) => {
+  const img = new Image();
+  const objectUrl = URL.createObjectURL(file);
+
+  img.onload = () => {
+    URL.revokeObjectURL(objectUrl);
+    const maxDimension = 800;
+    let { width, height } = img;
+
+    if (width > maxDimension || height > maxDimension) {
+      if (width > height) {
+        height = Math.round((height * maxDimension) / width);
+        width = maxDimension;
+      } else {
+        width = Math.round((width * maxDimension) / height);
+        height = maxDimension;
+      }
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      reject(new Error('No se pudo procesar la imagen seleccionada.'));
+      return;
+    }
+    ctx.drawImage(img, 0, 0, width, height);
+
+    const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+    resolve(compressedBase64);
+  };
+
+  img.onerror = () => {
+    URL.revokeObjectURL(objectUrl);
+    reject(new Error('No se pudo cargar la imagen seleccionada. Por favor, intentá con otra.'));
+  };
+
+  img.src = objectUrl;
 });
 
 function App() {
@@ -83,7 +117,12 @@ function App() {
     setSuccessMsg('');
 
     try {
-      const base64Image = await fileToBase64(image);
+      const compressedImage = await compressImage(image);
+
+      if (compressedImage.length > 700000) {
+        alert('La imagen comprimida supera el tamaño máximo permitido (700.000 caracteres). Por favor, seleccioná otra imagen.');
+        return;
+      }
 
       const reportData = {
         reporter_name: e.target.name.value,
@@ -92,7 +131,7 @@ function App() {
         description: e.target.description.value,
         location_lat: position.lat,
         location_lng: position.lng,
-        image_url: base64Image,
+        image_url: compressedImage,
         report_type: reportType,
         linked_report_id: reportType === 'found' ? linkedReportId : null
       };
@@ -119,7 +158,7 @@ function App() {
       }
     } catch (error) {
       console.error(error);
-      alert("Hubo un error procesando. Verifica el tamaño de la imagen.");
+      alert(error.message || "Hubo un error procesando el reporte.");
     } finally {
       setUploading(false);
     }
