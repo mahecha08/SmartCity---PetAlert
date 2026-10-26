@@ -1,0 +1,19 @@
+# Secretos: nunca se suben al repo
+.env
+.env.*
+*.pem
+*.key
+
+# Python
+backend/venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+
+# Configuración local de GGA
+.gga
+
+# Caché de pytest
+.pytest_cache/
