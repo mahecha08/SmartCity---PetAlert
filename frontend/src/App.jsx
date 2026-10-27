@@ -698,7 +698,7 @@ function App() {
             </div>
           </div>
         )}
-        <h1 className="text-4xl font-extrabold text-white mb-2 tracking-tight">SmartCity Pets</h1>
+        <h1 className="text-4xl font-extrabold text-white mb-2 tracking-tight">PetAlert</h1>
         <p className="text-gray-400">Plataforma ciudadana de identificación de mascotas</p>
       </header>
 

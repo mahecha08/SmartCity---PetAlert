@@ -1,4 +1,4 @@
-# SmartCity Pets - Plataforma MVP
+# PetAlert - Plataforma MVP
 
 Este es el MVP (Versión 1.0) para la plataforma web orientada a la identificación y reporte de mascotas perdidas, construida con Clean Architecture y preparada para la futura integración de IA (match).
 
