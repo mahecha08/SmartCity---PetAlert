@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# Solo para correr los tests en local; no se instalan en Vercel.
+pytest==9.1.1
+httpx==0.28.1

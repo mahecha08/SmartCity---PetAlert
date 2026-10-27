@@ -6,6 +6,7 @@ main.py solo habla con esta interfaz. Hay dos implementaciones:
 
 Se elige con la variable de entorno REPORTS_STORE ("memory" o "firestore").
 """
+import json
 import os
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -14,6 +15,25 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 COLLECTION = "reports"
+# Campos que se calculan al responder y no deben guardarse en Firestore.
+CAMPOS_CALCULADOS = {"distance_km"}
+
+
+def construir_credenciales(entorno=None):
+    """Credenciales de Firebase.
+
+    Si FIREBASE_CREDENTIALS_JSON trae el contenido del .json de la cuenta de
+    servicio (caso de Vercel, donde no hay archivos), se usa ese. Si no, se usa
+    GOOGLE_APPLICATION_CREDENTIALS, que apunta a un archivo (caso local).
+    """
+    entorno = os.environ if entorno is None else entorno
+    contenido = entorno.get("FIREBASE_CREDENTIALS_JSON")
+    if contenido:
+        try:
+            return credentials.Certificate(json.loads(contenido))
+        except json.JSONDecodeError as error:
+            raise ValueError("FIREBASE_CREDENTIALS_JSON no contiene un JSON válido.") from error
+    return credentials.ApplicationDefault()
 
 
 class InMemoryReportRepository:
@@ -38,16 +58,15 @@ class InMemoryReportRepository:
 class FirestoreReportRepository:
     def __init__(self, db=None):
         if db is None:
-            # Usa GOOGLE_APPLICATION_CREDENTIALS, que apunta al .json de la cuenta de servicio.
             if not firebase_admin._apps:
-                firebase_admin.initialize_app(credentials.ApplicationDefault())
+                firebase_admin.initialize_app(construir_credenciales())
             db = firestore.client()
         self.db = db
         self.collection = db.collection(COLLECTION)
 
     def add(self, report):
         report.created_at = datetime.now(timezone.utc).isoformat()
-        self.collection.document(report.id).set(report.model_dump())
+        self.collection.document(report.id).set(report.model_dump(exclude=CAMPOS_CALCULADOS))
 
     def get(self, report_id: str):
         snapshot = self.collection.document(report_id).get()
@@ -56,7 +75,7 @@ class FirestoreReportRepository:
         return self._desde_documento(snapshot.to_dict())
 
     def save(self, report):
-        self.collection.document(report.id).set(report.model_dump(), merge=True)
+        self.collection.document(report.id).set(report.model_dump(exclude=CAMPOS_CALCULADOS), merge=True)
 
     def list_newest_first(self) -> List:
         consulta = self.collection.order_by("created_at", direction=firestore.Query.DESCENDING)
@@ -70,9 +89,17 @@ class FirestoreReportRepository:
         return PetReportComplete(**datos)
 
 
+def usa_firestore() -> bool:
+    """REPORTS_STORE decide. Sin valor, se usa Firestore solo en Vercel."""
+    tipo = os.environ.get("REPORTS_STORE")
+    if tipo is None and os.environ.get("VERCEL"):
+        # En serverless la memoria se pierde entre ejecuciones: allí se usa Firestore por defecto.
+        tipo = "firestore"
+    return (tipo or "memory").lower() == "firestore"
+
+
 def build_repository():
-    tipo = os.environ.get("REPORTS_STORE", "memory").lower()
-    if tipo == "firestore":
+    if usa_firestore():
         return FirestoreReportRepository()
     print("REPORTS_STORE no es 'firestore': los reportes se guardan solo en memoria.")
     return InMemoryReportRepository()
