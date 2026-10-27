@@ -1,6 +1,7 @@
 # Secretos: nunca se suben al repo
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 
