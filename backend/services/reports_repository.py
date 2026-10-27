@@ -21,6 +21,7 @@ class InMemoryReportRepository:
         self.reports = []
 
     def add(self, report):
+        report.created_at = datetime.now(timezone.utc).isoformat()
         self.reports.append(report)
 
     def get(self, report_id: str):
@@ -45,9 +46,8 @@ class FirestoreReportRepository:
         self.collection = db.collection(COLLECTION)
 
     def add(self, report):
-        datos = report.model_dump()
-        datos["created_at"] = datetime.now(timezone.utc).isoformat()
-        self.collection.document(report.id).set(datos)
+        report.created_at = datetime.now(timezone.utc).isoformat()
+        self.collection.document(report.id).set(report.model_dump())
 
     def get(self, report_id: str):
         snapshot = self.collection.document(report_id).get()
@@ -67,7 +67,6 @@ class FirestoreReportRepository:
         # Import local para no depender del modelo desde este módulo al cargar.
         from main import PetReportComplete
 
-        datos.pop("created_at", None)
         return PetReportComplete(**datos)
 
 

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Body, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Body, BackgroundTasks, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -8,6 +8,7 @@ import smtplib
 from email.message import EmailMessage
 from datetime import datetime
 
+from services.reports_filters import filtrar_y_paginar
 from services.reports_repository import build_repository
 
 # --- Configuración Inicial ---
@@ -19,6 +20,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Total-Count"],
 )
 
 # --- Credenciales SMTP (desde variables de entorno, nunca en el código) ---
@@ -76,6 +78,7 @@ class PetReportComplete(BaseModel):
     image_url: str
     status: str = "Perdida"
     updates: List[PetUpdate] = []
+    created_at: Optional[str] = None
 
 # --- Almacenamiento (memoria o Firestore, según REPORTS_STORE) ---
 repo = build_repository()
@@ -163,5 +166,17 @@ def create_report(report: PetReportInput, background_tasks: BackgroundTasks):
     return {"status": "error", "message": "Datos inválidos"}
 
 @app.get("/api/reports", response_model=List[PetReportComplete])
-def get_reports():
-    return repo.list_newest_first()
+def get_reports(
+    response: Response,
+    pet_type: Optional[str] = None,
+    status: Optional[str] = None,
+    days: Optional[int] = Query(None, ge=1),
+    limit: Optional[int] = Query(None, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    pagina, total = filtrar_y_paginar(
+        repo.list_newest_first(),
+        pet_type=pet_type, status=status, days=days, limit=limit, offset=offset,
+    )
+    response.headers["X-Total-Count"] = str(total)
+    return pagina
