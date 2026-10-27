@@ -77,6 +77,22 @@ function App() {
   // List States
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
+  const [listReports, setListReports] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
+  const [filterPetType, setFilterPetType] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterDays, setFilterDays] = useState('');
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / 9));
+  const hasActiveFilters = Boolean(filterPetType || filterStatus || filterDays);
+
+  const handleClearFilters = () => {
+    setFilterPetType('');
+    setFilterStatus('');
+    setFilterDays('');
+    setPage(1);
+  };
 
   useEffect(() => { fetchReports(); }, [activeTab]);
 
@@ -89,6 +105,31 @@ function App() {
       }
     } catch (error) { console.error("Error fetching reports", error); }
   };
+
+  const fetchListReports = async () => {
+    try {
+      const params = new URLSearchParams();
+      params.append('limit', '9');
+      params.append('offset', String((page - 1) * 9));
+      if (filterPetType) params.append('pet_type', filterPetType);
+      if (filterStatus) params.append('status', filterStatus);
+      if (filterDays) params.append('days', filterDays);
+
+      const res = await fetch(`http://localhost:8000/api/reports?${params.toString()}`);
+      if (res.ok) {
+        const countHeader = res.headers.get('X-Total-Count') || res.headers.get('x-total-count');
+        if (countHeader !== null) {
+          setTotalCount(parseInt(countHeader, 10) || 0);
+        }
+        const data = await res.json();
+        setListReports(data);
+      }
+    } catch (error) { console.error("Error fetching list reports", error); }
+  };
+
+  useEffect(() => {
+    fetchListReports();
+  }, [page, filterPetType, filterStatus, filterDays]);
 
   const handleSearchLocation = async (e) => {
     e.preventDefault();
@@ -152,6 +193,7 @@ function App() {
         setImage(null);
         setLinkedReportId('');
         fetchReports();
+        fetchListReports();
         setTimeout(() => setSuccessMsg(''), 6000);
       } else {
         alert("Error al guardar el reporte");
@@ -287,36 +329,118 @@ function App() {
         {activeTab === 'list' && (
           <div className="animate-fade-in">
             <h2 className="text-2xl font-bold mb-6 border-b border-gray-700 pb-4">Reportes de Mascotas</h2>
-            {reports.length === 0 ? (
-              <div className="text-center py-10 text-gray-400"><p>No hay mascotas reportadas aún.</p></div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                {reports.map((report) => (
-                  <div key={report.id} className={`bg-gray-900 border rounded-xl p-5 transition-colors flex flex-col justify-between ${report.status === 'En Evaluación' ? 'border-amber-900/50 hover:border-amber-500' : 'border-gray-700 hover:border-indigo-500'}`}>
-                    <div>
-                      <div className="flex justify-between items-start mb-3">
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${report.status === 'En Evaluación' ? 'bg-amber-900/50 text-amber-400 border border-amber-800' : 'bg-red-900/50 text-red-400 border border-red-800'}`}>
-                          {report.status}
-                        </span>
-                        <span className="text-gray-500 text-sm">
-                          {report.pet_type === 'dog' ? 'Perro' : report.pet_type === 'cat' ? 'Gato' : 'Otro'}
-                        </span>
-                      </div>
-                      <p className="text-gray-300 text-sm line-clamp-2 mb-4">"{report.description}"</p>
-                      <p className="text-xs text-gray-500 mb-4">Dueño: {report.reporter_name}</p>
-                      
-                      {report.updates.length > 0 && (
-                        <p className="text-xs text-amber-500 mb-4 flex items-center font-medium">
-                          <Clock className="w-3 h-3 mr-1" /> {report.updates.length} avistamiento(s) reportado(s)
-                        </p>
-                      )}
-                    </div>
-                    <button onClick={() => setSelectedReport(report)} className="w-full mt-auto flex items-center justify-center py-2 bg-gray-800 hover:bg-gray-700 text-indigo-400 rounded-lg transition-colors text-sm font-semibold border border-gray-700 hover:border-indigo-500">
-                      <Info className="w-4 h-4 mr-2" /> Ver Ficha / Histórico
-                    </button>
-                  </div>
-                ))}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Tipo de Mascota</label>
+                <select
+                  value={filterPetType}
+                  onChange={(e) => { setFilterPetType(e.target.value); setPage(1); }}
+                  className="w-full bg-gray-900 border border-gray-600 rounded-lg p-2.5 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                >
+                  <option value="">Todos</option>
+                  <option value="dog">Perro</option>
+                  <option value="cat">Gato</option>
+                  <option value="other">Otro</option>
+                </select>
               </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Estado</label>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
+                  className="w-full bg-gray-900 border border-gray-600 rounded-lg p-2.5 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                >
+                  <option value="">Todos</option>
+                  <option value="Perdida">Perdida</option>
+                  <option value="En Evaluación">En Evaluación</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Fecha de Reporte</label>
+                <select
+                  value={filterDays}
+                  onChange={(e) => { setFilterDays(e.target.value); setPage(1); }}
+                  className="w-full bg-gray-900 border border-gray-600 rounded-lg p-2.5 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                >
+                  <option value="">Todos</option>
+                  <option value="7">Últimos 7 días</option>
+                  <option value="30">Últimos 30 días</option>
+                </select>
+              </div>
+            </div>
+
+            {listReports.length === 0 ? (
+              <div className="text-center py-10 text-gray-400">
+                <p>
+                  {hasActiveFilters
+                    ? "No hay reportes que coincidan con los filtros."
+                    : "No hay mascotas reportadas aún."}
+                </p>
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={handleClearFilters}
+                    className="mt-4 px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-semibold transition-colors"
+                  >
+                    Limpiar filtros
+                  </button>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  {listReports.map((report) => (
+                    <div key={report.id} className={`bg-gray-900 border rounded-xl p-5 transition-colors flex flex-col justify-between ${report.status === 'En Evaluación' ? 'border-amber-900/50 hover:border-amber-500' : 'border-gray-700 hover:border-indigo-500'}`}>
+                      <div>
+                        <div className="flex justify-between items-start mb-3">
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${report.status === 'En Evaluación' ? 'bg-amber-900/50 text-amber-400 border border-amber-800' : 'bg-red-900/50 text-red-400 border border-red-800'}`}>
+                            {report.status}
+                          </span>
+                          <span className="text-gray-500 text-sm">
+                            {report.pet_type === 'dog' ? 'Perro' : report.pet_type === 'cat' ? 'Gato' : 'Otro'}
+                          </span>
+                        </div>
+                        <p className="text-gray-300 text-sm line-clamp-2 mb-4">"{report.description}"</p>
+                        <p className="text-xs text-gray-500 mb-4">Dueño: {report.reporter_name}</p>
+                        
+                        {report.updates.length > 0 && (
+                          <p className="text-xs text-amber-500 mb-4 flex items-center font-medium">
+                            <Clock className="w-3 h-3 mr-1" /> {report.updates.length} avistamiento(s) reportado(s)
+                          </p>
+                        )}
+                      </div>
+                      <button onClick={() => setSelectedReport(report)} className="w-full mt-auto flex items-center justify-center py-2 bg-gray-800 hover:bg-gray-700 text-indigo-400 rounded-lg transition-colors text-sm font-semibold border border-gray-700 hover:border-indigo-500">
+                        <Info className="w-4 h-4 mr-2" /> Ver Ficha / Histórico
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between mt-8 pt-4 border-t border-gray-700">
+                  <button
+                    type="button"
+                    onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
+                    disabled={page <= 1}
+                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-semibold transition-colors"
+                  >
+                    Anterior
+                  </button>
+                  <span className="text-sm text-gray-400">
+                    Página <span className="font-semibold text-white">{page}</span> de <span className="font-semibold text-white">{totalPages}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPage((prev) => Math.min(prev + 1, totalPages))}
+                    disabled={page >= totalPages}
+                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-semibold transition-colors"
+                  >
+                    Siguiente
+                  </button>
+                </div>
+              </>
             )}
           </div>
         )}
